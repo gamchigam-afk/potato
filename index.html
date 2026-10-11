@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>POTATO PHYSICS 🥔</title>
 
 <style>
@@ -30,9 +30,7 @@ html, body {
 
 .potato {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    transform-origin: center;
+    object-fit: contain;
     user-select: none;
     -webkit-user-drag: none;
     pointer-events: none;
@@ -41,21 +39,19 @@ html, body {
 
 #spawnButton {
     position: fixed;
-    bottom: 25px;
     left: 50%;
+    bottom: 24px;
     transform: translateX(-50%);
-    width: 120px;
-    height: 120px;
-    border: 3px solid #777;
+    width: 100px;
+    height: 100px;
+    border: 3px solid #555;
     border-radius: 50%;
-    background: #191919;
-    box-shadow: 0 0 25px #333;
+    background: #171717;
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
     z-index: 10000;
-    cursor: pointer;
+    overflow: hidden;
     touch-action: manipulation;
 }
 
@@ -71,21 +67,22 @@ html, body {
 
 #counter {
     position: fixed;
-    top: 18px;
-    left: 18px;
+    top: 16px;
+    left: 16px;
     color: white;
     font-size: 15px;
-    opacity: .8;
     pointer-events: none;
+    z-index: 10001;
 }
 
 #hint {
     position: fixed;
-    top: 48px;
-    left: 18px;
+    top: 42px;
+    left: 16px;
     color: #888;
     font-size: 12px;
     pointer-events: none;
+    z-index: 10001;
 }
 </style>
 </head>
@@ -94,7 +91,7 @@ html, body {
 <div id="world"></div>
 
 <div id="counter">🥔 감자: 0개</div>
-<div id="hint">감자를 누르고 드래그해 보세요</div>
+<div id="hint">감자를 잡고 움직여 보세요!</div>
 
 <button id="spawnButton" aria-label="감자 생성">
     <img src="potato.png" alt="감자">
@@ -110,22 +107,27 @@ const potatoes = [];
 const GRAVITY = 0.42;
 const WALL_BOUNCE = 0.72;
 const POTATO_BOUNCE = 0.78;
-const FRICTION = 0.995;
 const AIR_RESISTANCE = 0.999;
+const MAX_SPEED = 30;
 
 let nextId = 0;
 let activeDrag = null;
 let lastFrame = performance.now();
 
-/* 감자 생성 */
-function createPotato(x, y) {
+/* 감자 크기: 기존 크기의 3배, 감자마다 랜덤 */
+function randomPotatoSize() {
+    return (90 + Math.random() * 40) * 3;
+}
+
+/* 감자 생성: 지정한 크기를 그대로 유지 */
+function createPotato(x, y, customSize = null) {
     const img = document.createElement("img");
     img.src = "potato.png";
     img.className = "potato";
     img.draggable = false;
+    img.alt = "";
 
-    // 기존 크기의 3배: 약 270~390px
-    const size = (90 + Math.random() * 40) * 3;
+    const size = customSize ?? randomPotatoSize();
 
     const potato = {
         id: nextId++,
@@ -141,16 +143,20 @@ function createPotato(x, y) {
         mass: size * size
     };
 
+    img.style.width = size + "px";
+    img.style.height = size + "px";
+
     world.appendChild(img);
     potatoes.push(potato);
+
     updateCounter();
+    renderPotato(potato);
+
     return potato;
 }
 
-/* 감자 화면 표시 */
+/* 화면 표시 */
 function renderPotato(p) {
-    p.el.style.width = p.size + "px";
-    p.el.style.height = p.size + "px";
     p.el.style.transform =
         `translate3d(${p.x}px, ${p.y}px, 0) rotate(${p.angle}deg)`;
 }
@@ -159,28 +165,65 @@ function updateCounter() {
     counter.textContent = `🥔 감자: ${potatoes.length}개`;
 }
 
-/* 생성 버튼 */
+/* 화면 가장자리에서 감자 생성 */
 spawnButton.addEventListener("pointerdown", (event) => {
     event.preventDefault();
 
-    const rect = spawnButton.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = Math.max(0, rect.top - 40);
+    const size = randomPotatoSize();
+    const edge = Math.floor(Math.random() * 4);
 
-    createPotato(x, y);
+    let x, y, vx, vy;
+
+    if (edge === 0) {
+        // 왼쪽
+        x = -size;
+        y = Math.random() * innerHeight;
+        vx = 5 + Math.random() * 7;
+        vy = (Math.random() - 0.5) * 8;
+    } else if (edge === 1) {
+        // 오른쪽
+        x = innerWidth;
+        y = Math.random() * innerHeight;
+        vx = -(5 + Math.random() * 7);
+        vy = (Math.random() - 0.5) * 8;
+    } else if (edge === 2) {
+        // 위쪽
+        x = Math.random() * innerWidth;
+        y = -size;
+        vx = (Math.random() - 0.5) * 8;
+        vy = 5 + Math.random() * 7;
+    } else {
+        // 아래쪽
+        x = Math.random() * innerWidth;
+        y = innerHeight;
+        vx = (Math.random() - 0.5) * 8;
+        vy = -(5 + Math.random() * 7);
+    }
+
+    // 중요: 가장자리 생성 시 랜덤 크기를 그대로 전달
+    const p = createPotato(
+        x + size / 2,
+        y + size / 2,
+        size
+    );
+
+    p.vx = vx;
+    p.vy = vy;
+
+    renderPotato(p);
 });
 
-/* 가장 위에 있는 감자를 선택 */
+/* 감자 선택 */
 function getPotatoAt(x, y) {
     for (let i = potatoes.length - 1; i >= 0; i--) {
         const p = potatoes[i];
 
-        if (
-            x >= p.x &&
-            x <= p.x + p.size &&
-            y >= p.y &&
-            y <= p.y + p.size
-        ) {
+        // 감자 모양 영역을 기준으로 선택
+        const cx = p.x + p.size / 2;
+        const cy = p.y + p.size / 2;
+        const radius = p.size * 0.43;
+
+        if (Math.hypot(x - cx, y - cy) <= radius) {
             return p;
         }
     }
@@ -245,22 +288,19 @@ world.addEventListener("pointermove", (event) => {
     renderPotato(p);
 });
 
-/* 드래그 종료 */
+/* 드래그 종료: 던지기 */
 function stopDrag(event) {
     if (!activeDrag) return;
 
-    if (
-        event &&
+    if (event &&
         event.pointerId !== undefined &&
-        event.pointerId !== activeDrag.pointerId
-    ) return;
+        event.pointerId !== activeDrag.pointerId) return;
 
     const p = activeDrag.potato;
-    p.dragging = false;
 
-    // 움직이던 방향으로 감자를 던질 수 있음
-    p.vx = Math.max(-25, Math.min(25, p.vx * 1.25));
-    p.vy = Math.max(-25, Math.min(25, p.vy * 1.25));
+    p.dragging = false;
+    p.vx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.vx * 1.25));
+    p.vy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, p.vy * 1.25));
     p.spin = p.vx * 0.45 + (Math.random() - 0.5) * 2;
 
     activeDrag = null;
@@ -268,11 +308,8 @@ function stopDrag(event) {
 
 world.addEventListener("pointerup", stopDrag);
 world.addEventListener("pointercancel", stopDrag);
-world.addEventListener("lostpointercapture", () => {
-    if (activeDrag) stopDrag();
-});
 
-/* 원형 감자끼리 충돌 판정 */
+/* 감자끼리 충돌 */
 function collide(a, b) {
     const ax = a.x + a.size / 2;
     const ay = a.y + a.size / 2;
@@ -298,12 +335,12 @@ function collide(a, b) {
     const invB = 1 / b.mass;
     const totalInv = invA + invB;
 
-    // 겹침 해소
+    // 겹침 보정
     if (!a.dragging && !b.dragging) {
-        a.x -= nx * overlap * (invA / totalInv);
-        a.y -= ny * overlap * (invA / totalInv);
-        b.x += nx * overlap * (invB / totalInv);
-        b.y += ny * overlap * (invB / totalInv);
+        a.x -= nx * overlap * invA / totalInv;
+        a.y -= ny * overlap * invA / totalInv;
+        b.x += nx * overlap * invB / totalInv;
+        b.y += ny * overlap * invB / totalInv;
     } else if (a.dragging && !b.dragging) {
         b.x += nx * overlap;
         b.y += ny * overlap;
@@ -312,15 +349,15 @@ function collide(a, b) {
         a.y -= ny * overlap;
     }
 
-    // 충돌 방향으로 튕겨 나가기
+    // 충돌 속도 계산
     const relativeX = b.vx - a.vx;
     const relativeY = b.vy - a.vy;
     const velocityAlongNormal = relativeX * nx + relativeY * ny;
 
     if (velocityAlongNormal < 0) {
-        const restitution = POTATO_BOUNCE;
         const impulse =
-            -(1 + restitution) * velocityAlongNormal / totalInv;
+            -(1 + POTATO_BOUNCE) *
+            velocityAlongNormal / totalInv;
 
         if (!a.dragging) {
             a.vx -= impulse * invA * nx;
@@ -332,7 +369,7 @@ function collide(a, b) {
             b.vy += impulse * invB * ny;
         }
 
-        // 충돌 시 회전
+        // 충돌하면 회전
         if (!a.dragging) a.spin += (Math.random() - 0.5) * 3;
         if (!b.dragging) b.spin += (Math.random() - 0.5) * 3;
     }
@@ -353,43 +390,43 @@ function update(delta) {
         p.y += p.vy * step;
         p.angle += p.spin * step;
 
-        // 바닥 충돌
+        // 바닥
         if (p.y + p.size > innerHeight) {
             p.y = innerHeight - p.size;
 
             if (p.vy > 0) {
                 p.vy = -p.vy * WALL_BOUNCE;
-                p.vx *= FRICTION;
+                p.vx *= 0.995;
                 p.spin += p.vx * 0.08;
             }
 
             if (Math.abs(p.vy) < 0.5) p.vy = 0;
         }
 
-        // 천장 충돌
+        // 천장
         if (p.y < 0) {
             p.y = 0;
             p.vy = Math.abs(p.vy) * WALL_BOUNCE;
         }
 
-        // 좌우 벽 충돌
+        // 왼쪽 벽
         if (p.x < 0) {
             p.x = 0;
             p.vx = Math.abs(p.vx) * WALL_BOUNCE;
             p.spin += 1;
         }
 
+        // 오른쪽 벽
         if (p.x + p.size > innerWidth) {
             p.x = innerWidth - p.size;
             p.vx = -Math.abs(p.vx) * WALL_BOUNCE;
             p.spin -= 1;
         }
 
-        // 회전은 천천히 멈춤
         p.spin *= Math.pow(0.998, step);
     }
 
-    // 감자끼리 충돌 처리
+    // 모든 감자 쌍의 충돌 처리
     for (let i = 0; i < potatoes.length; i++) {
         for (let j = i + 1; j < potatoes.length; j++) {
             collide(potatoes[i], potatoes[j]);
@@ -412,6 +449,7 @@ function loop(now) {
     requestAnimationFrame(loop);
 }
 
+/* 화면 크기 변경 */
 window.addEventListener("resize", () => {
     for (const p of potatoes) {
         p.x = Math.max(0, Math.min(innerWidth - p.size, p.x));
