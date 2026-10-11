@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>POTATO PHYSICS</title>
+
+<style>
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: white;
+  font-family: Arial, sans-serif;
+  overscroll-behavior: none;
+}
+
+#world {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  touch-action: none;
+}
+
+.potato {
+  position: absolute;
+  width: 82px;
+  height: 82px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: none;
+  cursor: grab;
+  will-change: transform;
+}
+
+.potato.dragging {
+  cursor: grabbing;
+  z-index: 9999;
+}
+
+#spawn {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 94px;
+  height: 94px;
+  padding: 9px;
+  border: 2px solid #333;
+  border-radius: 25px;
+  background: #111;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  z-index: 10000;
+  touch-action: manipulation;
+}
+
+#spawn:active {
+  background: #252525;
+  transform: translateX(-50%) scale(.93);
+}
+
+#spawn img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+#counter {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  color: #555;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 10001;
+}
+</style>
+</head>
+
+<body>
+<div id="world"></div>
+<div id="counter">POTATOES: 0</div>
+
+<button id="spawn" aria-label="감자 생성">
+  <img src="potato.png" alt="감자">
+</button>
+
+<script>
+const world = document.getElementById("world");
+const spawnButton = document.getElementById("spawn");
+const counter = document.getElementById("counter");
+
+const potatoes = [];
+
+const GRAVITY = 1800;
+const BOUNCE = 0.28;
+const FRICTION = 0.985;
+
+let lastTime = 0;
+let nextId = 0;
+
+function createPotato(x, y) {
+  const img = document.createElement("img");
+
+  img.src = "potato.png";
+  img.alt = "";
+  img.draggable = false;
+  img.className = "potato";
+
+  const size = 58 + Math.random() * 42;
+
+  const potato = {
+    id: nextId++,
+    el: img,
+    x: x - size / 2,
+    y: y - size / 2,
+    size,
+    vx: (Math.random() - 0.5) * 180,
+    vy: Math.random() * 50,
+    angle: Math.random() * 360,
+    spin: (Math.random() - 0.5) * 150,
+    dragging: false,
+    pointerId: null,
+    grabX: 0,
+    grabY: 0,
+    lastX: 0,
+    lastY: 0,
+    lastMoveTime: 0
+  };
+
+  img.style.width = size + "px";
+  img.style.height = size + "px";
+
+  world.appendChild(img);
+  potatoes.push(potato);
+
+  img.addEventListener("pointerdown", event => {
+    event.preventDefault();
+
+    potato.dragging = true;
+    potato.pointerId = event.pointerId;
+    potato.vx = 0;
+    potato.vy = 0;
+
+    potato.grabX = event.clientX - potato.x;
+    potato.grabY = event.clientY - potato.y;
+    potato.lastX = event.clientX;
+    potato.lastY = event.clientY;
+    potato.lastMoveTime = performance.now();
+
+    img.classList.add("dragging");
+    img.style.zIndex = String(100 + potato.id);
+
+    try {
+      img.setPointerCapture(event.pointerId);
+    } catch (_) {}
+  });
+
+  img.addEventListener("pointermove", event => {
+    if (!potato.dragging ||
+        event.pointerId !== potato.pointerId) return;
+
+    event.preventDefault();
+
+    const now = performance.now();
+    const dt = Math.max(
+      (now - potato.lastMoveTime) / 1000,
+      0.001
+    );
+
+    potato.vx = (event.clientX - potato.lastX) / dt;
+    potato.vy = (event.clientY - potato.lastY) / dt;
+
+    potato.x = event.clientX - potato.grabX;
+    potato.y = event.clientY - potato.grabY;
+
+    potato.lastX = event.clientX;
+    potato.lastY = event.clientY;
+    potato.lastMoveTime = now;
+
+    potato.x = Math.max(
+      0, Math.min(innerWidth - potato.size, potato.x)
+    );
+
+    potato.y = Math.max(
+      0, Math.min(innerHeight - potato.size, potato.y)
+    );
+
+    render(potato);
+  });
+
+  function release(event) {
+    if (!potato.dragging) return;
+    if (event.pointerId !== potato.pointerId) return;
+
+    potato.dragging = false;
+    potato.pointerId = null;
+    img.classList.remove("dragging");
+
+    // 드래그한 방향으로 감자가 날아가는 효과
+    potato.vx = Math.max(-1800, Math.min(1800, potato.vx));
+    potato.vy = Math.max(-1800, Math.min(1800, potato.vy));
+  }
+
+  img.addEventListener("pointerup", release);
+  img.addEventListener("pointercancel", release);
+
+  render(potato);
+  counter.textContent = "POTATOES: " + potatoes.length;
+}
+
+function render(p) {
+  p.el.style.transform =
+    `translate3d(${p.x}px, ${p.y}px, 0) rotate(${p.angle}deg)`;
+}
+
+spawnButton.addEventListener("click", () => {
+  const x = innerWidth / 2;
+  const y = innerHeight - 135;
+
+  createPotato(x, y);
+});
+
+function animate(time) {
+  if (!lastTime) lastTime = time;
+
+  const dt = Math.min((time - lastTime) / 1000, 0.03);
+  lastTime = time;
+
+  const width = innerWidth;
+  const height = innerHeight;
+
+  for (const p of potatoes) {
+    if (p.dragging) continue;
+
+    p.vy += GRAVITY * dt;
+
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.angle += p.spin * dt;
+
+    // 왼쪽 벽
+    if (p.x < 0) {
+      p.x = 0;
+      p.vx = Math.abs(p.vx) * BOUNCE;
+    }
+
+    // 오른쪽 벽
+    if (p.x + p.size > width) {
+      p.x = width - p.size;
+      p.vx = -Math.abs(p.vx) * BOUNCE;
+    }
+
+    // 위쪽 벽
+    if (p.y < 0) {
+      p.y = 0;
+      p.vy = Math.abs(p.vy) * BOUNCE;
+    }
+
+    // 바닥
+    if (p.y + p.size > height) {
+      p.y = height - p.size;
+      p.vy = -Math.abs(p.vy) * BOUNCE;
+
+      if (Math.abs(p.vy) < 35) p.vy = 0;
+
+      p.vx *= FRICTION;
+      p.spin *= 0.98;
+    }
+
+    // 바닥에 멈춘 감자는 계속 진동하지 않도록 정리
+    if (p.y + p.size >= height - 1 &&
+        Math.abs(p.vy) < 35) {
+      p.vy = 0;
+    }
+
+    render(p);
+  }
+
+  requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+
+window.addEventListener("resize", () => {
+  for (const p of potatoes) {
+    p.x = Math.max(0, Math.min(innerWidth - p.size, p.x));
+    p.y = Math.max(0, Math.min(innerHeight - p.size, p.y));
+    render(p);
+  }
+});
+</script>
+</body>
+</html>
